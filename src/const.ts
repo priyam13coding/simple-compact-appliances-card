@@ -1,0 +1,72 @@
+export const CARD_VERSION = "0.1.0";
+export const CARD_NAME    = "simple-compact-appliances";
+
+export type ApplianceType = "washer" | "dryer" | "dishwasher" | "microwave";
+
+export const APPLIANCE_TYPES: ApplianceType[] = [
+  "washer",
+  "dryer",
+  "dishwasher",
+  "microwave",
+];
+
+// Display labels used in the appliance selector and the card header.
+export const APPLIANCE_LABELS: Record<ApplianceType, string> = {
+  washer:     "Washer",
+  dryer:      "Dryer",
+  dishwasher: "Dishwasher",
+  microwave:  "Microwave",
+};
+
+// MDI icons rendered on the appliance selector chip and the big header tile.
+export const APPLIANCE_ICONS: Record<ApplianceType, string> = {
+  washer:     "mdi:washing-machine",
+  dryer:      "mdi:tumble-dryer",
+  dishwasher: "mdi:dishwasher",
+  microwave:  "mdi:microwave",
+};
+
+// Each appliance type has its own accent color routed through a CSS variable
+// so themes and card-mod can override per-appliance. Defaults pick a soft
+// Material You-ish palette aligned with the mock.
+export const APPLIANCE_COLOR_VARS: Record<ApplianceType, string> = {
+  washer:     "var(--sca-color-washer, #58a6ff)",      // azure
+  dryer:      "var(--sca-color-dryer, #f0883e)",       // orange
+  dishwasher: "var(--sca-color-dishwasher, #79c0ff)",  // light blue
+  microwave:  "var(--sca-color-microwave, #d29922)",   // amber
+};
+
+// State-cell color tokens (Status / Power / Door / Temp). Same routing pattern:
+// surface the default through a variable so the user can rebrand from a theme.
+export const STATE_COLOR_VARS = {
+  running: "var(--sca-running, #d0bcff)",
+  on:      "var(--sca-on, #a8d5a2)",
+  off:     "var(--sca-off, #9e99a3)",
+  warn:    "var(--sca-warn, #f2b8b8)",
+  temp:    "var(--sca-temp, #ffcba4)",
+} as const;
+
+// Default delay-timer bounds (minutes). Each appliance can override these via
+// `delay_min` / `delay_max` / `delay_step` in YAML.
+export const DELAY_MIN_DEFAULT  = 15;
+export const DELAY_MAX_DEFAULT  = 480;
+export const DELAY_STEP_DEFAULT = 15;
+
+// Lowercased state strings considered "running" when reading the running_entity
+// or status_entity state. Anything outside this set is treated as idle/standby.
+export const RUNNING_STATES = new Set([
+  "run",
+  "running",
+  "active",
+  "on",
+  "wash",
+  "rinse",
+  "spin",
+  "dry",
+  "cooking",
+  "delay_start",
+  "delayed_start",
+]);
+
+// Lowercased state strings considered "door open" when reading the door entity.
+export const DOOR_OPEN_STATES = new Set(["on", "open", "opened"]);
