@@ -24,19 +24,36 @@ export interface ApplianceConfig {
   enabled?: boolean;                               // Hide the appliance without removing it (default true)
 
   // Per-control entity overrides
-  power_entity?:     string;                       // switch.* — power toggle
-  door_entity?:      string;                       // binary_sensor.* — state "on" = open
-  status_entity?:    string;                       // sensor.* — running/idle/done text
-  running_entity?:   string;                       // sensor.* or binary_sensor.* — used when status_entity isn't set
-  program_entity?:   string;                       // select.* — current program
-  delay_entity?:     string;                       // number.* — delay-start in minutes
-  remaining_entity?: string;                       // sensor.* — remaining time (seconds, minutes, or timestamp)
-  temp_entity?:      string;                       // sensor.* — water/cook temperature
+  power_entity?:      string;                      // switch.* — power toggle
+  door_entity?:       string;                      // binary_sensor.* — state "on" = open
+  status_entity?:     string;                      // sensor.* — running/idle/done text
+  running_entity?:    string;                      // sensor.* or binary_sensor.* — used when status_entity isn't set
+  program_entity?:    string;                      // select.* — current program
+  delay_entity?:      string;                      // number.* — delay-start in minutes
+  remaining_entity?:  string;                      // sensor.* — remaining time (seconds, minutes, or timestamp)
+  temp_entity?:       string;                      // sensor.* — water/cook temperature
+  light_entity?:      string;                      // switch.* or light.* — appliance light (interactive)
+  fan_entity?:        string;                      // switch.* or fan.* — appliance fan (interactive)
+  water_entity?:      string;                      // sensor.* — water level / consumption (read-only)
+  eco_entity?:        string;                      // switch.* — eco mode (interactive)
+  child_lock_entity?: string;                      // switch.* — child lock (interactive)
 
   // Service calls for start / pause buttons. Most integrations expose
   // button.* or script.* — set these explicitly.
   start_action?: ServiceAction;
   pause_action?: ServiceAction;
+
+  // Status-grid layout. `controls` is the ordered list of cells (any name from
+  // BUILT_IN_CONTROLS). Grid total = rows × per_row; excess controls are
+  // truncated, empty slots render as blank cells. Defaults: per-type from
+  // DEFAULT_CONTROLS, rows=1, per_row=4.
+  controls?:         string[];
+  controls_rows?:    number;
+  controls_per_row?: number;
+
+  // Bottom control row. show_delay hides only the delay −/+/value triplet;
+  // program dropdown and play/pause stay rendered. Default true.
+  show_delay?: boolean;
 
   // Delay slider bounds (minutes). Defaults: 15 / 480 / 15.
   delay_min?:  number;
@@ -58,16 +75,25 @@ export interface ResolvedAppliance {
   type: ApplianceType;
   name: string;
   enabled: boolean;
-  power_entity?:     string;
-  door_entity?:      string;
-  status_entity?:    string;
-  running_entity?:   string;
-  program_entity?:   string;
-  delay_entity?:     string;
-  remaining_entity?: string;
-  temp_entity?:      string;
+  power_entity?:      string;
+  door_entity?:       string;
+  status_entity?:     string;
+  running_entity?:    string;
+  program_entity?:    string;
+  delay_entity?:      string;
+  remaining_entity?:  string;
+  temp_entity?:       string;
+  light_entity?:      string;
+  fan_entity?:        string;
+  water_entity?:      string;
+  eco_entity?:        string;
+  child_lock_entity?: string;
   start_action?: ServiceAction;
   pause_action?: ServiceAction;
+  controls:         string[];
+  controls_rows:    number;
+  controls_per_row: number;
+  show_delay: boolean;
   delay_min:  number;
   delay_max:  number;
   delay_step: number;

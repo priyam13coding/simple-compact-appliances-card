@@ -7,11 +7,13 @@ Designed alongside [simple-compact-thermostat](https://github.com/priyam13coding
 ## Features
 
 - **One card, up to four appliances.** Tab between them in the Control view, or see them all at a glance in the Summary view.
-- **Per-control entity mapping.** Map any combination of `switch.*`, `binary_sensor.*`, `sensor.*`, `select.*`, `number.*`, and `button.*` / `script.*` entities. Anything you don't map is hidden or shown as "—".
-- **Auto-discovery from a device.** Point at a `device_id` and the card auto-fills power, door, status, program, delay, remaining-time, and temperature entities. Per-control overrides win when set.
-- **GUI editor.** No YAML required for the common cases. An expandable section per appliance, plus an advanced YAML block for `start_action` / `pause_action` service calls.
+- **Configurable status grid.** Pick any of 9 built-in controls (`status`, `power`, `door`, `temp`, `light`, `fan`, `water`, `eco`, `child_lock`) and lay them out as 1×4, 2×3, 1×6, etc. — independently per appliance. Microwave defaults to `[status, power, light, fan]`; washer/dryer/dishwasher default to `[status, power, door, temp]`.
+- **Per-control entity mapping.** Map any combination of `switch.*`, `light.*`, `fan.*`, `binary_sensor.*`, `sensor.*`, `select.*`, `number.*`, `button.*` / `script.*`. Anything you don't map is hidden or shown as "—".
+- **Auto-discovery from a device.** Point at a `device_id` and the card auto-fills every entity slot it can. Per-control overrides win when set.
+- **Optional delay timer.** Set `show_delay: false` per appliance to hide the delay −/+ buttons. Program selector and Play/Pause stay rendered.
+- **GUI editor.** No YAML required for the common cases. Per-appliance sections for entity mapping, controls grid, and delay bounds, plus an advanced YAML block for `start_action` / `pause_action` service calls.
 - **Theme-friendly.** Every color, spacing, and radius is routed through a CSS variable (`--sca-*`). Override per appliance type (`--sca-color-washer`, …) or per state token (`--sca-running`, …) from your theme or with `card_mod`.
-- **Optimistic UI.** Toggling power, changing a program, or adjusting the delay updates the card instantly; the card reconciles against the entity once Home Assistant catches up.
+- **Optimistic UI.** Toggling power, light, fan, eco, child lock, changing a program, or adjusting the delay updates the card instantly; the card reconciles against the entity once Home Assistant catches up.
 
 ## Install
 
@@ -67,6 +69,27 @@ appliances:
     delay_entity:     number.washer_delay_start
     remaining_entity: sensor.washer_remaining_time  # seconds, minutes, or timestamp
     temp_entity:      sensor.washer_water_temperature
+    light_entity:     switch.washer_light            # for `light` control cell
+    fan_entity:       switch.washer_fan              # for `fan` control cell
+    water_entity:     sensor.washer_water_level      # for `water` control cell
+    eco_entity:       switch.washer_eco              # for `eco` control cell
+    child_lock_entity: switch.washer_child_lock      # for `child_lock` control cell
+
+    # Status-grid layout. Defaults depend on the appliance `type`:
+    #   washer/dryer/dishwasher: [status, power, door, temp] in a 1×4 grid
+    #   microwave:               [status, power, light, fan] in a 1×4 grid
+    controls_rows:    2
+    controls_per_row: 3
+    controls:                                        # rendered row-by-row, ltr
+      - status
+      - power
+      - door
+      - temp
+      - eco
+      - water
+
+    show_delay: true                                 # hide the −/+ delay
+                                                     # buttons when false
 
     # Service calls fired by the Play/Pause button.
     start_action:
@@ -81,6 +104,16 @@ appliances:
     delay_max:  480
     delay_step: 15
 ```
+
+## Status grid recipes
+
+| Appliance | Want | YAML |
+|---|---|---|
+| **Microwave with light + fan** (default) | `[status, power, light, fan]` | nothing — it's the default |
+| **Dishwasher 2×3 with eco + water** | 6 cells in two rows | `controls_rows: 2`<br>`controls_per_row: 3`<br>`controls: [status, power, door, temp, eco, water]` |
+| **Washer 1×3 without temp** | drop temp cell | `controls_per_row: 3`<br>`controls: [status, power, door]` |
+| **Microwave with no delay** | hide the −/+ buttons | `show_delay: false` |
+| **Smart plug-only appliance** | just status + power | `controls_per_row: 2`<br>`controls: [status, power]`<br>`show_delay: false` |
 
 ## Theming
 

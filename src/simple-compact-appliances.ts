@@ -11,6 +11,10 @@ import {
   APPLIANCE_ICONS,
   APPLIANCE_COLOR_VARS,
   STATE_COLOR_VARS,
+  CONTROL_META,
+  DEFAULT_CONTROLS,
+  DEFAULT_CONTROLS_ROWS,
+  DEFAULT_CONTROLS_PER_ROW,
   DELAY_MIN_DEFAULT,
   DELAY_MAX_DEFAULT,
   DELAY_STEP_DEFAULT,
@@ -225,7 +229,6 @@ export class SimpleCompactAppliancesCard extends LitElement {
     const remaining = this._getRemainingSeconds(app);
     const program   = this._getProgram(app);
     const delay     = this._getDelay(app);
-    const temp      = this._getTemp(app);
     const accent    = APPLIANCE_COLOR_VARS[app.type];
 
     return html`
@@ -251,8 +254,8 @@ export class SimpleCompactAppliancesCard extends LitElement {
           </div>
         </div>
 
-        <!-- Status grid: 4 flat cells -->
-        ${this._renderStatusGrid(app, running, power, door, temp, remaining)}
+        <!-- Status grid: data-driven by app.controls / rows / per_row -->
+        ${this._renderStatusGrid(app)}
 
         <!-- Delay / Program / Play row -->
         ${this._renderControlRow(app, power, door, running, program, delay)}
@@ -263,70 +266,168 @@ export class SimpleCompactAppliancesCard extends LitElement {
     `;
   }
 
-  private _renderStatusGrid(
-    app: ResolvedAppliance,
-    running: boolean,
-    power: boolean,
-    door: "open" | "closed" | null,
-    temp: { value: string; unit: string } | null,
-    remaining: number | null,
-  ): TemplateResult {
-    const cells = [
-      {
-        key: "status",
-        label: "Status",
-        value: running
-          ? (remaining != null ? formatRemaining(remaining) : "Running")
-          : "Idle",
-        icon: "mdi:clock-outline",
-        color: running ? STATE_COLOR_VARS.running : STATE_COLOR_VARS.off,
-        interactive: false,
-      },
-      {
-        key: "power",
-        label: "Power",
-        value: power ? "On" : "Off",
-        icon: "mdi:flash",
-        color: power ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-        interactive: !!app.power_entity,
-        onToggle: () => this._togglePower(app),
-      },
-      {
-        key: "door",
-        label: "Door",
-        value: door === null ? "—" : door === "closed" ? "Closed" : "Open",
-        icon: door === "open" ? "mdi:door-open" : "mdi:door-closed",
-        color: door === null
-          ? STATE_COLOR_VARS.off
-          : door === "closed"
-            ? STATE_COLOR_VARS.on
-            : STATE_COLOR_VARS.warn,
-        interactive: false,
-      },
-      {
-        key: "temp",
-        label: "Temp",
-        value: temp ? `${temp.value}${temp.unit}` : "—",
-        icon: "mdi:thermometer",
-        color: temp ? STATE_COLOR_VARS.temp : STATE_COLOR_VARS.off,
-        interactive: false,
-      },
-    ];
+  private _renderStatusGrid(app: ResolvedAppliance): TemplateResult {
+    const rows    = Math.max(1, app.controls_rows);
+    const perRow  = Math.max(1, app.controls_per_row);
+    const total   = rows * perRow;
+
+    // Slice/pad the user's controls list to exactly fill the grid. Excess
+    // entries are dropped, short lists get blank trailing cells.
+    const slots: (string | null)[] = app.controls.slice(0, total);
+    while (slots.length < total) slots.push(null);
 
     return html`
-      <div class="status-grid">
-        ${cells.map((c, i) => html`
-          <div
-            class="cell ${c.interactive ? "cell-interactive" : ""} ${i > 0 ? "cell-border-left" : ""}"
-            @click=${c.interactive ? c.onToggle : undefined}
-          >
-            <ha-icon icon=${c.icon} style="color: ${c.color};"></ha-icon>
-            <span class="cell-value" style="color: ${c.color};">${c.value}</span>
-            <span class="cell-label">${c.label}</span>
-          </div>
-        `)}
+      <div class="status-grid" style="grid-template-columns: repeat(${perRow}, 1fr);">
+        ${slots.map((name, i) => {
+          const col = i % perRow;
+          const row = Math.floor(i / perRow);
+          const borderClasses =
+            (col > 0 ? "cell-border-left " : "") +
+            (row > 0 ? "cell-border-top "  : "");
+          if (name == null) {
+            return html`<div class="cell cell-empty ${borderClasses}"></div>`;
+          }
+          const cell = this._readControlCell(app, name);
+          return html`
+            <div
+              class="cell ${cell.interactive ? "cell-interactive" : ""} ${borderClasses}"
+              @click=${cell.interactive ? cell.onClick : undefined}
+              title=${cell.label}
+            >
+              <ha-icon icon=${cell.icon} style="color: ${cell.color};"></ha-icon>
+              <span class="cell-value" style="color: ${cell.color};">${cell.value}</span>
+              <span class="cell-label">${cell.label}</span>
+            </div>
+          `;
+        })}
       </div>
     `;
+  }
+
+  // Reads one control cell's display state. Returns label/icon/color/value
+  // plus interaction wiring. Dispatch by control name; unknown names render
+  // as a placeholder so an unrecognized config entry doesn't break the card.
+  private _readControlCell(app: ResolvedAppliance, name: string): {
+    label: string;
+    icon: string;
+    color: string;
+    value: string;
+    interactive: boolean;
+    onClick?: () => void;
+  } {
+    const meta = (CONTROL_META as Record<string, { label: string; icon: string }>)[name];
+    const label = meta?.label ?? name;
+
+    switch (name) {
+      case "status": {
+        const running   = this._getRunning(app);
+        const remaining = this._getRemainingSeconds(app);
+        return {
+          label,
+          icon: "mdi:clock-outline",
+          color: running ? STATE_COLOR_VARS.running : STATE_COLOR_VARS.off,
+          value: running
+            ? (remaining != null ? formatRemaining(remaining) : "Running")
+            : "Idle",
+          interactive: false,
+        };
+      }
+      case "power": {
+        const power = this._getPower(app);
+        return {
+          label,
+          icon: "mdi:flash",
+          color: power ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+          value: power ? "On" : "Off",
+          interactive: !!app.power_entity,
+          onClick: () => this._togglePower(app),
+        };
+      }
+      case "door": {
+        const door = this._getDoor(app);
+        return {
+          label,
+          icon: door === "open" ? "mdi:door-open" : "mdi:door-closed",
+          color: door == null
+            ? STATE_COLOR_VARS.off
+            : door === "closed" ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.warn,
+          value: door == null ? "—" : door === "closed" ? "Closed" : "Open",
+          interactive: false,
+        };
+      }
+      case "temp": {
+        const temp = this._getTemp(app);
+        return {
+          label,
+          icon: "mdi:thermometer",
+          color: temp ? STATE_COLOR_VARS.temp : STATE_COLOR_VARS.off,
+          value: temp ? `${temp.value}${temp.unit}` : "—",
+          interactive: false,
+        };
+      }
+      case "light": {
+        const on = this._isOn(app.light_entity, `light:${app.type}`);
+        return {
+          label,
+          icon: on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline",
+          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+          value: app.light_entity ? (on ? "On" : "Off") : "—",
+          interactive: !!app.light_entity,
+          onClick: () => this._toggleEntity(app.light_entity!, `light:${app.type}`),
+        };
+      }
+      case "fan": {
+        const on = this._isOn(app.fan_entity, `fan:${app.type}`);
+        return {
+          label,
+          icon: "mdi:fan",
+          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+          value: app.fan_entity ? (on ? "On" : "Off") : "—",
+          interactive: !!app.fan_entity,
+          onClick: () => this._toggleEntity(app.fan_entity!, `fan:${app.type}`),
+        };
+      }
+      case "water": {
+        const formatted = this._getNumericWithUnit(app.water_entity);
+        return {
+          label,
+          icon: "mdi:water",
+          color: formatted ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+          value: formatted ?? "—",
+          interactive: false,
+        };
+      }
+      case "eco": {
+        const on = this._isOn(app.eco_entity, `eco:${app.type}`);
+        return {
+          label,
+          icon: "mdi:leaf",
+          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+          value: app.eco_entity ? (on ? "On" : "Off") : "—",
+          interactive: !!app.eco_entity,
+          onClick: () => this._toggleEntity(app.eco_entity!, `eco:${app.type}`),
+        };
+      }
+      case "child_lock": {
+        const on = this._isOn(app.child_lock_entity, `child_lock:${app.type}`);
+        return {
+          label,
+          icon: on ? "mdi:lock" : "mdi:lock-open-variant-outline",
+          color: on ? STATE_COLOR_VARS.warn : STATE_COLOR_VARS.off,
+          value: app.child_lock_entity ? (on ? "On" : "Off") : "—",
+          interactive: !!app.child_lock_entity,
+          onClick: () => this._toggleEntity(app.child_lock_entity!, `child_lock:${app.type}`),
+        };
+      }
+      default:
+        return {
+          label,
+          icon: "mdi:help-circle-outline",
+          color: STATE_COLOR_VARS.off,
+          value: "—",
+          interactive: false,
+        };
+    }
   }
 
   private _renderControlRow(
@@ -339,34 +440,36 @@ export class SimpleCompactAppliancesCard extends LitElement {
   ): TemplateResult {
     const canStart = power && door !== "open";
     const programOptions = this._getProgramOptions(app);
-    const hasDelay = app.delay_entity != null;
+    const hasDelay = app.show_delay && app.delay_entity != null;
     const delayDisabled = !hasDelay || running;
 
     return html`
       <div class="control-row">
-        <span class="row-label">Delay</span>
+        ${app.show_delay ? html`
+          <span class="row-label">Delay</span>
 
-        <button
-          class="round-btn"
-          ?disabled=${delayDisabled || (delay != null && delay <= app.delay_min)}
-          @click=${() => this._adjustDelay(app, -app.delay_step)}
-          title="Decrease delay"
-        >
-          <ha-icon icon="mdi:minus"></ha-icon>
-        </button>
+          <button
+            class="round-btn"
+            ?disabled=${delayDisabled || (delay != null && delay <= app.delay_min)}
+            @click=${() => this._adjustDelay(app, -app.delay_step)}
+            title="Decrease delay"
+          >
+            <ha-icon icon="mdi:minus"></ha-icon>
+          </button>
 
-        <span class="delay-value">
-          ${delay != null ? formatDelay(delay) : "—"}
-        </span>
+          <span class="delay-value">
+            ${delay != null ? formatDelay(delay) : "—"}
+          </span>
 
-        <button
-          class="round-btn"
-          ?disabled=${delayDisabled || (delay != null && delay >= app.delay_max)}
-          @click=${() => this._adjustDelay(app, app.delay_step)}
-          title="Increase delay"
-        >
-          <ha-icon icon="mdi:plus"></ha-icon>
-        </button>
+          <button
+            class="round-btn"
+            ?disabled=${delayDisabled || (delay != null && delay >= app.delay_max)}
+            @click=${() => this._adjustDelay(app, app.delay_step)}
+            title="Increase delay"
+          >
+            <ha-icon icon="mdi:plus"></ha-icon>
+          </button>
+        ` : nothing}
 
         <!-- Program dropdown -->
         <div class="program-wrapper">
@@ -483,16 +586,25 @@ export class SimpleCompactAppliancesCard extends LitElement {
       type:     a.type,
       name:     a.name ?? APPLIANCE_LABELS[a.type],
       enabled:  a.enabled !== false,
-      power_entity:     a.power_entity     ?? discovered.power_entity,
-      door_entity:      a.door_entity      ?? discovered.door_entity,
-      status_entity:    a.status_entity    ?? discovered.status_entity,
-      running_entity:   a.running_entity   ?? discovered.running_entity,
-      program_entity:   a.program_entity   ?? discovered.program_entity,
-      delay_entity:     a.delay_entity     ?? discovered.delay_entity,
-      remaining_entity: a.remaining_entity ?? discovered.remaining_entity,
-      temp_entity:      a.temp_entity      ?? discovered.temp_entity,
+      power_entity:      a.power_entity      ?? discovered.power_entity,
+      door_entity:       a.door_entity       ?? discovered.door_entity,
+      status_entity:     a.status_entity     ?? discovered.status_entity,
+      running_entity:    a.running_entity    ?? discovered.running_entity,
+      program_entity:    a.program_entity    ?? discovered.program_entity,
+      delay_entity:      a.delay_entity      ?? discovered.delay_entity,
+      remaining_entity:  a.remaining_entity  ?? discovered.remaining_entity,
+      temp_entity:       a.temp_entity       ?? discovered.temp_entity,
+      light_entity:      a.light_entity      ?? discovered.light_entity,
+      fan_entity:        a.fan_entity        ?? discovered.fan_entity,
+      water_entity:      a.water_entity      ?? discovered.water_entity,
+      eco_entity:        a.eco_entity        ?? discovered.eco_entity,
+      child_lock_entity: a.child_lock_entity ?? discovered.child_lock_entity,
       start_action: a.start_action,
       pause_action: a.pause_action,
+      controls:         a.controls         ?? DEFAULT_CONTROLS[a.type],
+      controls_rows:    a.controls_rows    ?? DEFAULT_CONTROLS_ROWS,
+      controls_per_row: a.controls_per_row ?? DEFAULT_CONTROLS_PER_ROW,
+      show_delay: a.show_delay !== false,
       delay_min:  a.delay_min  ?? DELAY_MIN_DEFAULT,
       delay_max:  a.delay_max  ?? DELAY_MAX_DEFAULT,
       delay_step: a.delay_step ?? DELAY_STEP_DEFAULT,
@@ -540,6 +652,13 @@ export class SimpleCompactAppliancesCard extends LitElement {
     result.temp_entity      = pickFirstMatching(["sensor"],        eid =>
       states[eid]?.attributes?.device_class === "temperature"
       || nameHas(eid, "temperature", "temp"));
+    result.light_entity     = pickFirstMatching(["light", "switch"], eid => nameHas(eid, "light", "lamp"));
+    result.fan_entity       = pickFirstMatching(["fan", "switch"],   eid => nameHas(eid, "fan", "vent", "hood"));
+    result.water_entity     = pickFirstMatching(["sensor"],          eid =>
+      states[eid]?.attributes?.device_class === "water"
+      || nameHas(eid, "water", "rinse"));
+    result.eco_entity       = pickFirstMatching(["switch"],          eid => nameHas(eid, "eco"));
+    result.child_lock_entity = pickFirstMatching(["switch", "lock"], eid => nameHas(eid, "child", "lock"));
 
     return result;
   }
@@ -626,6 +745,28 @@ export class SimpleCompactAppliancesCard extends LitElement {
     return { value: String(Math.round(n)), unit };
   }
 
+  // Read "is the entity on?" through the optimistic cache. Used for light /
+  // fan / eco / child_lock controls. Returns false when the entity isn't set.
+  private _isOn(entityId: string | undefined, optKey: string): boolean {
+    const opt = this._optimistic[optKey];
+    if (opt) return !!opt.value;
+    if (!entityId) return false;
+    const st = this.hass.states[entityId];
+    return st?.state === "on";
+  }
+
+  // Generic numeric-with-unit reader for read-only cells (water level, etc.).
+  // Returns "<rounded><unit>" or null if the entity is missing/non-numeric.
+  private _getNumericWithUnit(entityId: string | undefined): string | null {
+    if (!entityId) return null;
+    const st = this.hass.states[entityId];
+    if (!st) return null;
+    const n = parseFloat(st.state);
+    if (isNaN(n)) return null;
+    const unit = st.attributes?.unit_of_measurement ?? "";
+    return `${Math.round(n)}${unit}`;
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────
   private _togglePower(app: ResolvedAppliance): void {
     if (!app.power_entity) return;
@@ -634,6 +775,17 @@ export class SimpleCompactAppliancesCard extends LitElement {
     const domain = app.power_entity.split(".")[0];
     this.hass.callService(domain, current ? "turn_off" : "turn_on", {
       entity_id: app.power_entity,
+    });
+  }
+
+  // Generic on/off toggle for non-power switch entities (light/fan/eco/lock).
+  // Calls turn_on or turn_off on whatever domain the entity belongs to.
+  private _toggleEntity(entityId: string, optKey: string): void {
+    const current = this._isOn(entityId, optKey);
+    this._setOptimistic(optKey, !current);
+    const domain = entityId.split(".")[0];
+    this.hass.callService(domain, current ? "turn_off" : "turn_on", {
+      entity_id: entityId,
     });
   }
 
@@ -860,9 +1012,9 @@ export class SimpleCompactAppliancesCard extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 12px; }
 
     /* ── Status grid ───────────────────────────────────────────────── */
+    /* grid-template-columns is set inline per appliance (controls_per_row). */
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
       border: 1px solid var(--sca-border);
       border-radius: var(--sca-radius-inner);
       overflow: hidden;
@@ -878,6 +1030,8 @@ export class SimpleCompactAppliancesCard extends LitElement {
       transition: background 150ms;
     }
     .cell-border-left { border-left: 1px solid var(--sca-border); }
+    .cell-border-top  { border-top:  1px solid var(--sca-border); }
+    .cell-empty       { background: var(--sca-subtle-bg); }
     .cell-interactive {
       cursor: pointer;
     }

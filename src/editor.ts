@@ -1,7 +1,16 @@
 import { LitElement, html, css, nothing, TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { HomeAssistant } from "custom-card-helpers";
-import { CARD_NAME, APPLIANCE_TYPES, APPLIANCE_LABELS } from "./const";
+import {
+  CARD_NAME,
+  APPLIANCE_TYPES,
+  APPLIANCE_LABELS,
+  BUILT_IN_CONTROLS,
+  CONTROL_META,
+  DEFAULT_CONTROLS,
+  DEFAULT_CONTROLS_ROWS,
+  DEFAULT_CONTROLS_PER_ROW,
+} from "./const";
 import { ApplianceConfig, SimpleCompactAppliancesConfig } from "./types";
 
 export const EDITOR_NAME = `${CARD_NAME}-editor`;
@@ -37,21 +46,30 @@ const TOP_SCHEMA = [
 ];
 
 const APPLIANCE_LABELS_FORM: Record<string, string> = {
-  type:             "Appliance type",
-  name:             "Display name",
-  device_id:        "Device (auto-discovery)",
-  enabled:          "Enabled",
-  power_entity:     "Power switch",
-  door_entity:      "Door sensor",
-  status_entity:    "Status sensor",
-  running_entity:   "Running sensor (fallback)",
-  program_entity:   "Program select",
-  delay_entity:     "Delay start",
-  remaining_entity: "Remaining time sensor",
-  temp_entity:      "Temperature sensor",
-  delay_min:        "Delay min (minutes)",
-  delay_max:        "Delay max (minutes)",
-  delay_step:       "Delay step (minutes)",
+  type:              "Appliance type",
+  name:              "Display name",
+  device_id:         "Device (auto-discovery)",
+  enabled:           "Enabled",
+  power_entity:      "Power switch",
+  door_entity:       "Door sensor",
+  status_entity:     "Status sensor",
+  running_entity:    "Running sensor (fallback)",
+  program_entity:    "Program select",
+  delay_entity:      "Delay start",
+  remaining_entity:  "Remaining time sensor",
+  temp_entity:       "Temperature sensor",
+  light_entity:      "Light",
+  fan_entity:        "Fan",
+  water_entity:      "Water sensor",
+  eco_entity:        "Eco switch",
+  child_lock_entity: "Child lock",
+  controls:          "Controls (in display order)",
+  controls_rows:     "Rows",
+  controls_per_row:  "Controls per row",
+  show_delay:        "Show delay timer",
+  delay_min:         "Delay min (minutes)",
+  delay_max:         "Delay max (minutes)",
+  delay_step:        "Delay step (minutes)",
 };
 
 const APPLIANCE_SCHEMA = [
@@ -80,14 +98,46 @@ const APPLIANCE_SCHEMA = [
     title: "Entity mapping (overrides auto-discovery)",
     icon: "mdi:link-variant",
     schema: [
-      { name: "power_entity",     selector: { entity: { domain: ["switch", "input_boolean"] } } },
-      { name: "door_entity",      selector: { entity: { domain: ["binary_sensor"] } } },
-      { name: "status_entity",    selector: { entity: { domain: ["sensor"] } } },
-      { name: "running_entity",   selector: { entity: { domain: ["sensor", "binary_sensor"] } } },
-      { name: "program_entity",   selector: { entity: { domain: ["select", "input_select"] } } },
-      { name: "delay_entity",     selector: { entity: { domain: ["number", "input_number"] } } },
-      { name: "remaining_entity", selector: { entity: { domain: ["sensor"] } } },
-      { name: "temp_entity",      selector: { entity: { domain: ["sensor"] } } },
+      { name: "power_entity",      selector: { entity: { domain: ["switch", "input_boolean"] } } },
+      { name: "door_entity",       selector: { entity: { domain: ["binary_sensor"] } } },
+      { name: "status_entity",     selector: { entity: { domain: ["sensor"] } } },
+      { name: "running_entity",    selector: { entity: { domain: ["sensor", "binary_sensor"] } } },
+      { name: "program_entity",    selector: { entity: { domain: ["select", "input_select"] } } },
+      { name: "delay_entity",      selector: { entity: { domain: ["number", "input_number"] } } },
+      { name: "remaining_entity",  selector: { entity: { domain: ["sensor"] } } },
+      { name: "temp_entity",       selector: { entity: { domain: ["sensor"] } } },
+      { name: "light_entity",      selector: { entity: { domain: ["light", "switch"] } } },
+      { name: "fan_entity",        selector: { entity: { domain: ["fan", "switch"] } } },
+      { name: "water_entity",      selector: { entity: { domain: ["sensor"] } } },
+      { name: "eco_entity",        selector: { entity: { domain: ["switch", "input_boolean"] } } },
+      { name: "child_lock_entity", selector: { entity: { domain: ["switch", "lock"] } } },
+    ],
+  },
+  {
+    type: "expandable",
+    name: "",
+    title: "Controls grid (which cells, how many rows)",
+    icon: "mdi:view-grid-outline",
+    schema: [
+      {
+        type: "grid",
+        name: "",
+        schema: [
+          { name: "controls_rows",    selector: { number: { min: 1, max: 4, step: 1, mode: "box" } } },
+          { name: "controls_per_row", selector: { number: { min: 1, max: 6, step: 1, mode: "box" } } },
+        ],
+      },
+      {
+        name: "controls",
+        selector: {
+          select: {
+            multiple: true,
+            mode: "list",
+            options: BUILT_IN_CONTROLS.map(c => ({ value: c, label: CONTROL_META[c].label })),
+          },
+        },
+      },
+      { name: "show_delay", selector: { boolean: {} } },
     ],
   },
   {
@@ -110,10 +160,13 @@ const APPLIANCE_SCHEMA = [
 ];
 
 const APPLIANCE_DEFAULTS: Partial<ApplianceConfig> = {
-  enabled:    true,
-  delay_min:  15,
-  delay_max:  480,
-  delay_step: 15,
+  enabled:          true,
+  controls_rows:    DEFAULT_CONTROLS_ROWS,
+  controls_per_row: DEFAULT_CONTROLS_PER_ROW,
+  show_delay:       true,
+  delay_min:        15,
+  delay_max:        480,
+  delay_step:       15,
 };
 
 @customElement(EDITOR_NAME)
@@ -172,7 +225,10 @@ export class SimpleCompactAppliancesEditor extends LitElement {
 
   private _renderApplianceEditor(a: ApplianceConfig, i: number): TemplateResult {
     const expanded = this._expanded === i;
-    const data = { ...APPLIANCE_DEFAULTS, ...a };
+    // Prefill controls with the per-type default so the multi-select shows
+    // what the card is actually rendering (rather than appearing empty).
+    const typeDefault = DEFAULT_CONTROLS[a.type] ?? DEFAULT_CONTROLS.washer;
+    const data = { ...APPLIANCE_DEFAULTS, controls: typeDefault, ...a };
     return html`
       <div class="appliance-card">
         <div class="appliance-head" @click=${() => this._expanded = expanded ? -1 : i}>
@@ -262,6 +318,14 @@ export class SimpleCompactAppliancesEditor extends LitElement {
     // Strip values that match runtime defaults so the YAML stays minimal.
     for (const [k, dv] of Object.entries(APPLIANCE_DEFAULTS)) {
       if ((next as any)[k] === dv) delete (next as any)[k];
+    }
+    // Strip `controls` when it equals the per-type default (same length AND
+    // same order). User-customised lists are kept verbatim.
+    const typeDefault = DEFAULT_CONTROLS[next.type] ?? DEFAULT_CONTROLS.washer;
+    if (Array.isArray(next.controls)
+        && next.controls.length === typeDefault.length
+        && next.controls.every((c, idx) => c === typeDefault[idx])) {
+      delete next.controls;
     }
     for (const k of Object.keys(next) as (keyof ApplianceConfig)[]) {
       if (next[k] === "" || next[k] === undefined) delete (next as any)[k];
