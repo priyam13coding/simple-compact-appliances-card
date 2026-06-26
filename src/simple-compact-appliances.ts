@@ -733,6 +733,10 @@ export class SimpleCompactAppliancesCard extends LitElement {
     const running   = this._getRunning(app);
     const remaining = this._getRemainingSeconds(app);
     const program   = this._getProgram(app);
+    // Wall-clock finish time, computed only when running. Falls back to null
+    // when remaining_entity isn't set or doesn't parse.
+    const finishAt  = running ? this._getFinishDate(app) : null;
+    const useFinish = app.header_time === "finish_at" && finishAt != null;
 
     let statusClass = "off";
     let statusText  = "Off";
@@ -740,6 +744,33 @@ export class SimpleCompactAppliancesCard extends LitElement {
       if (door === "open") { statusClass = "warn"; statusText = "Door open"; }
       else { statusClass = "idle"; statusText = "Idle"; }
     }
+
+    // Subtitle: program name when idle; running info when running so the
+    // user sees the finish time at a glance without opening Control tab.
+    const subtitle = running
+      ? (useFinish
+          ? `Finishes at ${formatTimeOfDay(finishAt!, this.hass)}`
+          : (remaining != null ? `${formatRemaining(remaining)} remaining` : "Running"))
+      : (program ?? "—");
+
+    // Right-side time block honors header_time the same way the Control-tab
+    // header pill does, so both views agree on what "running" looks like.
+    const rightBlock = running
+      ? (useFinish
+          ? html`
+              <div class="row-time">${formatTimeOfDay(finishAt!, this.hass)}</div>
+              <div class="row-time-sub">finishes at</div>
+            `
+          : remaining != null
+            ? html`
+                <div class="row-time">${formatRemaining(remaining)}</div>
+                <div class="row-time-sub">remaining</div>
+              `
+            : html`
+                <div class="row-time">Running</div>
+                <div class="row-time-sub"></div>
+              `)
+      : html`<span class="status-tag ${statusClass}">${statusText}</span>`;
 
     return html`
       <button
@@ -756,15 +787,10 @@ export class SimpleCompactAppliancesCard extends LitElement {
         </div>
         <div class="row-id">
           <div class="row-name">${app.name}</div>
-          <div class="row-program">${program ?? "—"}</div>
+          <div class="row-program">${subtitle}</div>
         </div>
         <div class="row-status">
-          ${running
-            ? html`
-                <div class="row-time">${remaining != null ? formatRemaining(remaining) : "Running"}</div>
-                <div class="row-time-sub">${remaining != null ? "remaining" : ""}</div>
-              `
-            : html`<span class="status-tag ${statusClass}">${statusText}</span>`}
+          ${rightBlock}
         </div>
         ${running ? html`<span class="dot"></span>` : nothing}
       </button>

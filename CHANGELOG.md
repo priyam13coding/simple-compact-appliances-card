@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — Summary tab parity with Control
+
+- The Summary tab now honors `header_time` the same way the Control tab
+  does. When set to `finish_at` (the default), the right-side time block
+  shows `14:35 / FINISHES AT` instead of `30:11 / REMAINING`.
+- Summary subtitle now shows running status when running — `Finishes at
+  14:35` (or `30:11 remaining` when `header_time: remaining`) instead of
+  the program name. When the appliance is idle the subtitle still shows
+  the program name (or `—`).
+
 ## 0.4.0 — progress cell + finish-time header
 
 - **Header pill** now defaults to showing the wall-clock time the cycle

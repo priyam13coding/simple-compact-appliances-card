@@ -1,4 +1,4 @@
-export const CARD_VERSION = "0.4.0";
+export const CARD_VERSION = "0.4.1";
 export const CARD_NAME    = "simple-compact-appliances";
 
 export type ApplianceType = "washer" | "dryer" | "dishwasher" | "microwave";
