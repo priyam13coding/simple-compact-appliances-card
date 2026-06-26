@@ -247,11 +247,7 @@ export class SimpleCompactAppliancesCard extends LitElement {
             </div>
           </div>
           <div class="status-pill ${running ? "running" : ""}">
-            ${running && remaining != null
-              ? html`<ha-icon icon="mdi:timer-outline"></ha-icon> ${formatRemaining(remaining)}`
-              : running
-                ? html`<ha-icon icon="mdi:play"></ha-icon> Running`
-                : "Standby"}
+            ${this._renderHeaderPill(app, running, remaining)}
           </div>
         </div>
 
@@ -265,6 +261,35 @@ export class SimpleCompactAppliancesCard extends LitElement {
         ${!power            ? html`<p class="hint dim">Turn on power to start</p>` : nothing}
       </div>
     `;
+  }
+
+  // Header pill content. Three states:
+  //   - standby (not running)            → "Standby"
+  //   - running, header_time = finish_at → "Done at HH:MM" (wall clock)
+  //   - running, header_time = remaining → "MM:SS" duration
+  // Falls back to "Running" when neither finish-time nor remaining-seconds
+  // can be computed (e.g. integration doesn't expose remaining_entity).
+  private _renderHeaderPill(
+    app: ResolvedAppliance,
+    running: boolean,
+    remaining: number | null,
+  ): TemplateResult | string {
+    if (!running) return "Standby";
+
+    if (app.header_time === "finish_at") {
+      const finish = this._getFinishDate(app);
+      if (finish) {
+        return html`
+          <ha-icon icon="mdi:flag-checkered"></ha-icon>
+          Finishes at ${formatTimeOfDay(finish, this.hass)}
+        `;
+      }
+    }
+
+    if (remaining != null) {
+      return html`<ha-icon icon="mdi:timer-outline"></ha-icon> ${formatRemaining(remaining)}`;
+    }
+    return html`<ha-icon icon="mdi:play"></ha-icon> Running`;
   }
 
   private _renderStatusGrid(app: ResolvedAppliance): TemplateResult {
@@ -384,6 +409,17 @@ export class SimpleCompactAppliancesCard extends LitElement {
             icon: "mdi:thermometer",
             color: temp ? STATE_COLOR_VARS.temp : STATE_COLOR_VARS.off,
             value: temp ? `${temp.value}${temp.unit}` : "—",
+          },
+        };
+      }
+      case "progress": {
+        const pct = this._getProgressPct(app);
+        return {
+          display: {
+            label,
+            icon: "mdi:progress-clock",
+            color: pct != null ? STATE_COLOR_VARS.progress : STATE_COLOR_VARS.off,
+            value: pct != null ? `${pct}%` : "—",
           },
         };
       }
@@ -758,6 +794,7 @@ export class SimpleCompactAppliancesCard extends LitElement {
       delay_entity:      a.delay_entity      ?? discovered.delay_entity,
       remaining_entity:  a.remaining_entity  ?? discovered.remaining_entity,
       temp_entity:       a.temp_entity       ?? discovered.temp_entity,
+      progress_entity:   a.progress_entity   ?? discovered.progress_entity,
       light_entity:      a.light_entity      ?? discovered.light_entity,
       fan_entity:        a.fan_entity        ?? discovered.fan_entity,
       water_entity:      a.water_entity      ?? discovered.water_entity,
@@ -769,6 +806,7 @@ export class SimpleCompactAppliancesCard extends LitElement {
       controls_rows:    a.controls_rows    ?? DEFAULT_CONTROLS_ROWS,
       controls_per_row: a.controls_per_row ?? DEFAULT_CONTROLS_PER_ROW,
       control_actions:  a.control_actions,
+      header_time: a.header_time ?? "finish_at",
       show_delay: a.show_delay !== false,
       delay_min:  a.delay_min  ?? DELAY_MIN_DEFAULT,
       delay_max:  a.delay_max  ?? DELAY_MAX_DEFAULT,
@@ -817,6 +855,9 @@ export class SimpleCompactAppliancesCard extends LitElement {
     result.temp_entity      = pickFirstMatching(["sensor"],        eid =>
       states[eid]?.attributes?.device_class === "temperature"
       || nameHas(eid, "temperature", "temp"));
+    result.progress_entity  = pickFirstMatching(["sensor"],        eid =>
+      states[eid]?.attributes?.unit_of_measurement === "%"
+      || nameHas(eid, "progress", "percent", "completion"));
     result.light_entity     = pickFirstMatching(["light", "switch"], eid => nameHas(eid, "light", "lamp"));
     result.fan_entity       = pickFirstMatching(["fan", "switch"],   eid => nameHas(eid, "fan", "vent", "hood"));
     result.water_entity     = pickFirstMatching(["sensor"],          eid =>
@@ -918,6 +959,37 @@ export class SimpleCompactAppliancesCard extends LitElement {
     if (!entityId) return false;
     const st = this.hass.states[entityId];
     return st?.state === "on";
+  }
+
+  // Cycle progress as an integer 0–100, read from progress_entity. Returns
+  // null if the entity is missing or non-numeric. Clamped so an integration
+  // that briefly reports 101 / -1 doesn't render weirdly.
+  private _getProgressPct(app: ResolvedAppliance): number | null {
+    if (!app.progress_entity) return null;
+    const st = this.hass.states[app.progress_entity];
+    if (!st || st.state === "unknown" || st.state === "unavailable") return null;
+    const n = parseFloat(st.state);
+    if (isNaN(n)) return null;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+
+  // Returns the wall-clock Date when the appliance is expected to finish, or
+  // null when we can't compute it. Prefers a timestamp-class remaining_entity
+  // (the integration already did the math); otherwise adds the remaining
+  // seconds to "now".
+  private _getFinishDate(app: ResolvedAppliance): Date | null {
+    if (!app.remaining_entity) return null;
+    const st = this.hass.states[app.remaining_entity];
+    if (!st || st.state === "unknown" || st.state === "unavailable") return null;
+
+    if (st.attributes?.device_class === "timestamp") {
+      const t = Date.parse(st.state);
+      if (isNaN(t)) return null;
+      return new Date(t);
+    }
+    const seconds = this._getRemainingSeconds(app);
+    if (seconds == null) return null;
+    return new Date(Date.now() + seconds * 1000);
   }
 
   // Generic numeric-with-unit reader for read-only cells (water level, etc.).
@@ -1169,6 +1241,7 @@ export class SimpleCompactAppliancesCard extends LitElement {
       background: var(--sca-subtle-bg);
       color: var(--sca-text-secondary);
       font-family: var(--sca-mono);
+      white-space: nowrap;
     }
     .status-pill.running {
       background: color-mix(in srgb, var(--sca-accent) 22%, transparent);
@@ -1499,6 +1572,16 @@ function formatDelay(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+// Locale-aware wall-clock time. Uses HA's user-language locale when set; falls
+// back to the browser default (en-US → "2:35 PM", de-DE → "14:35").
+function formatTimeOfDay(date: Date, hass: HomeAssistant): string {
+  const lang = (hass as any).locale?.language;
+  return new Intl.DateTimeFormat(lang, {
+    hour:   "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function formatRemaining(seconds: number): string {

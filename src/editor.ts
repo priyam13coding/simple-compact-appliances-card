@@ -64,6 +64,7 @@ const APPLIANCE_LABELS_FORM: Record<string, string> = {
   delay_entity:      "Delay start",
   remaining_entity:  "Remaining time sensor",
   temp_entity:       "Temperature sensor",
+  progress_entity:   "Progress sensor (0–100%)",
   light_entity:      "Light",
   fan_entity:        "Fan",
   water_entity:      "Water sensor",
@@ -72,6 +73,7 @@ const APPLIANCE_LABELS_FORM: Record<string, string> = {
   controls:          "Controls (in display order)",
   controls_rows:     "Rows",
   controls_per_row:  "Controls per row",
+  header_time:       "Header time display",
   show_delay:        "Show delay timer",
   delay_min:         "Delay min (minutes)",
   delay_max:         "Delay max (minutes)",
@@ -115,6 +117,7 @@ const APPLIANCE_SCHEMA = [
       { name: "delay_entity",      selector: { entity: { domain: ["number", "input_number"] } } },
       { name: "remaining_entity",  selector: { entity: { domain: ["sensor"] } } },
       { name: "temp_entity",       selector: { entity: { domain: ["sensor"] } } },
+      { name: "progress_entity",   selector: { entity: { domain: ["sensor"] } } },
       { name: "light_entity",      selector: { entity: { domain: ["light", "switch"] } } },
       { name: "fan_entity",        selector: { entity: { domain: ["fan", "switch"] } } },
       { name: "water_entity",      selector: { entity: { domain: ["sensor"] } } },
@@ -147,6 +150,18 @@ const APPLIANCE_SCHEMA = [
         },
       },
       { name: "show_delay", selector: { boolean: {} } },
+      {
+        name: "header_time",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "finish_at", label: "Finish time (\"Finishes at 14:35\")" },
+              { value: "remaining", label: "Remaining (\"33:20\")" },
+            ],
+          },
+        },
+      },
     ],
   },
   {
@@ -189,6 +204,7 @@ const APPLIANCE_DEFAULTS: Partial<ApplianceConfig> = {
   controls_rows:    DEFAULT_CONTROLS_ROWS,
   controls_per_row: DEFAULT_CONTROLS_PER_ROW,
   show_delay:       true,
+  header_time:      "finish_at",
   delay_min:        15,
   delay_max:        480,
   delay_step:       15,

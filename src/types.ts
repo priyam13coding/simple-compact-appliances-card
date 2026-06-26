@@ -57,6 +57,7 @@ export interface ApplianceConfig {
   delay_entity?:      string;                      // number.* — delay-start in minutes
   remaining_entity?:  string;                      // sensor.* — remaining time (seconds, minutes, or timestamp)
   temp_entity?:       string;                      // sensor.* — water/cook temperature
+  progress_entity?:   string;                      // sensor.* — cycle progress as percent (0–100)
   light_entity?:      string;                      // switch.* or light.* — appliance light (interactive)
   fan_entity?:        string;                      // switch.* or fan.* — appliance fan (interactive)
   water_entity?:      string;                      // sensor.* — water level / consumption (read-only)
@@ -75,6 +76,11 @@ export interface ApplianceConfig {
   controls?:         string[];
   controls_rows?:    number;
   controls_per_row?: number;
+
+  // Header pill display when the appliance is running. Either the duration
+  // remaining ("33:20") or the wall-clock time it'll finish ("Finishes at
+  // 14:35"). Defaults to "finish_at".
+  header_time?: "remaining" | "finish_at";
 
   // Per-cell tap behavior. Map from built-in control name → action config.
   // When `tap_action` is set, it overrides the cell's default click handler
@@ -114,6 +120,7 @@ export interface ResolvedAppliance {
   delay_entity?:      string;
   remaining_entity?:  string;
   temp_entity?:       string;
+  progress_entity?:   string;
   light_entity?:      string;
   fan_entity?:        string;
   water_entity?:      string;
@@ -125,6 +132,7 @@ export interface ResolvedAppliance {
   controls_rows:    number;
   controls_per_row: number;
   control_actions?: Record<string, ControlActionConfig>;
+  header_time: "remaining" | "finish_at";
   show_delay: boolean;
   delay_min:  number;
   delay_max:  number;

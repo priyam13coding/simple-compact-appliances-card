@@ -1,4 +1,4 @@
-export const CARD_VERSION = "0.3.0";
+export const CARD_VERSION = "0.4.0";
 export const CARD_NAME    = "simple-compact-appliances";
 
 export type ApplianceType = "washer" | "dryer" | "dishwasher" | "microwave";
@@ -36,14 +36,15 @@ export const APPLIANCE_COLOR_VARS: Record<ApplianceType, string> = {
   microwave:  "var(--sca-color-microwave, #d29922)",   // amber
 };
 
-// State-cell color tokens (Status / Power / Door / Temp). Same routing pattern:
-// surface the default through a variable so the user can rebrand from a theme.
+// State-cell color tokens. Same routing pattern: surface each default through
+// a CSS variable so the user can rebrand from a theme or with card-mod.
 export const STATE_COLOR_VARS = {
-  running: "var(--sca-running, #d0bcff)",
-  on:      "var(--sca-on, #a8d5a2)",
-  off:     "var(--sca-off, #9e99a3)",
-  warn:    "var(--sca-warn, #f2b8b8)",
-  temp:    "var(--sca-temp, #ffcba4)",
+  running:  "var(--sca-running, #d0bcff)",
+  on:       "var(--sca-on, #a8d5a2)",
+  off:      "var(--sca-off, #9e99a3)",
+  warn:     "var(--sca-warn, #f2b8b8)",
+  temp:     "var(--sca-temp, #ffcba4)",
+  progress: "var(--sca-progress, #ffcba4)",
 } as const;
 
 // ── Control catalog ────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ export type BuiltInControl =
   | "power"
   | "door"
   | "temp"
+  | "progress"
   | "light"
   | "fan"
   | "water"
@@ -63,7 +65,7 @@ export type BuiltInControl =
   | "child_lock";
 
 export const BUILT_IN_CONTROLS: BuiltInControl[] = [
-  "status", "power", "door", "temp",
+  "status", "power", "door", "temp",   "progress",
   "light",  "fan",   "water",
   "eco",    "child_lock",
 ];
@@ -81,6 +83,7 @@ export const CONTROL_META: Record<BuiltInControl, {
   power:      { label: "Power",      icon: "mdi:flash",               entitySlot: "power_entity",      interactive: true },
   door:       { label: "Door",       icon: "mdi:door-closed",         entitySlot: "door_entity" },
   temp:       { label: "Temp",       icon: "mdi:thermometer",         entitySlot: "temp_entity" },
+  progress:   { label: "Progress",   icon: "mdi:progress-clock",      entitySlot: "progress_entity" },
   light:      { label: "Light",      icon: "mdi:lightbulb-outline",   entitySlot: "light_entity",      interactive: true },
   fan:        { label: "Fan",        icon: "mdi:fan",                 entitySlot: "fan_entity",        interactive: true },
   water:      { label: "Water",      icon: "mdi:water",               entitySlot: "water_entity" },
@@ -88,12 +91,14 @@ export const CONTROL_META: Record<BuiltInControl, {
   child_lock: { label: "Child Lock", icon: "mdi:lock-outline",        entitySlot: "child_lock_entity", interactive: true },
 };
 
-// Per-type default control layout. Washer/Dryer/Dishwasher follow the original
-// 4-cell layout; Microwave drops door/temp (rarely sensored) for light/fan.
+// Per-type default control layout. Washer/Dryer/Dishwasher show
+// progress-% in the 4th cell (more useful for an in-progress cycle than
+// the raw cook/water temperature). Microwave keeps light/fan.
+// Users who prefer the old "temp" cell can put it back via YAML/editor.
 export const DEFAULT_CONTROLS: Record<ApplianceType, BuiltInControl[]> = {
-  washer:     ["status", "power", "door",  "temp"],
-  dryer:      ["status", "power", "door",  "temp"],
-  dishwasher: ["status", "power", "door",  "temp"],
+  washer:     ["status", "power", "door",  "progress"],
+  dryer:      ["status", "power", "door",  "progress"],
+  dishwasher: ["status", "power", "door",  "progress"],
   microwave:  ["status", "power", "light", "fan"],
 };
 

@@ -7,7 +7,8 @@ Designed alongside [simple-compact-thermostat](https://github.com/priyam13coding
 ## Features
 
 - **One card, up to four appliances.** Tab between them in the Control view, or see them all at a glance in the Summary view.
-- **Configurable status grid.** Pick any of 9 built-in controls (`status`, `power`, `door`, `temp`, `light`, `fan`, `water`, `eco`, `child_lock`) and lay them out as 1×4, 2×3, 1×6, etc. — independently per appliance. Microwave defaults to `[status, power, light, fan]`; washer/dryer/dishwasher default to `[status, power, door, temp]`.
+- **Configurable status grid.** Pick any of 10 built-in controls (`status`, `power`, `door`, `temp`, `progress`, `light`, `fan`, `water`, `eco`, `child_lock`) and lay them out as 1×4, 2×3, 1×6, etc. — independently per appliance. Microwave defaults to `[status, power, light, fan]`; washer/dryer/dishwasher default to `[status, power, door, progress]`.
+- **Finish-time header.** When an appliance is running, the header pill shows "Finishes at 14:35" (locale-aware wall clock) by default. Per-appliance `header_time: remaining` flips it back to the "33:20" countdown style.
 - **Tap actions per cell.** Every cell supports a standard HA `tap_action` (`none`, `toggle`, `call-service`, `more-info`, `navigate`, `url`) — same shape as Mushroom / button-card. When set, it overrides the cell's default toggle behavior, so the light cell can run a script instead of toggling a switch.
 - **Per-control entity mapping.** Map any combination of `switch.*`, `light.*`, `fan.*`, `binary_sensor.*`, `sensor.*`, `select.*`, `number.*`, `button.*` / `script.*`. Anything you don't map is hidden or shown as "—".
 - **Auto-discovery from a device.** Point at a `device_id` and the card auto-fills every entity slot it can. Per-control overrides win when set.
@@ -70,15 +71,20 @@ appliances:
     delay_entity:     number.washer_delay_start
     remaining_entity: sensor.washer_remaining_time  # seconds, minutes, or timestamp
     temp_entity:      sensor.washer_water_temperature
+    progress_entity:  sensor.washer_progress         # 0–100, for `progress` cell
     light_entity:     switch.washer_light            # for `light` control cell
     fan_entity:       switch.washer_fan              # for `fan` control cell
     water_entity:     sensor.washer_water_level      # for `water` control cell
     eco_entity:       switch.washer_eco              # for `eco` control cell
     child_lock_entity: switch.washer_child_lock      # for `child_lock` control cell
 
+    # Header pill display when running. "finish_at" → "Finishes at 14:35"
+    # (wall clock, locale-aware). "remaining" → "33:20" (duration).
+    header_time: finish_at
+
     # Status-grid layout. Defaults depend on the appliance `type`:
-    #   washer/dryer/dishwasher: [status, power, door, temp] in a 1×4 grid
-    #   microwave:               [status, power, light, fan] in a 1×4 grid
+    #   washer/dryer/dishwasher: [status, power, door, progress] in a 1×4 grid
+    #   microwave:               [status, power, light, fan]     in a 1×4 grid
     controls_rows:    2
     controls_per_row: 3
     controls:                                        # rendered row-by-row, ltr
@@ -129,9 +135,12 @@ appliances:
 
 | Appliance | Want | YAML |
 |---|---|---|
+| **Washer / dryer / dishwasher** (default) | `[status, power, door, progress]` | nothing — it's the default |
 | **Microwave with light + fan** (default) | `[status, power, light, fan]` | nothing — it's the default |
-| **Dishwasher 2×3 with eco + water** | 6 cells in two rows | `controls_rows: 2`<br>`controls_per_row: 3`<br>`controls: [status, power, door, temp, eco, water]` |
-| **Washer 1×3 without temp** | drop temp cell | `controls_per_row: 3`<br>`controls: [status, power, door]` |
+| **Dishwasher 2×3 with eco + water** | 6 cells in two rows | `controls_rows: 2`<br>`controls_per_row: 3`<br>`controls: [status, power, door, progress, eco, water]` |
+| **Bring back the temp cell** | replace `progress` with `temp` | `controls: [status, power, door, temp]` |
+| **Washer 1×3 without progress** | drop the 4th cell | `controls_per_row: 3`<br>`controls: [status, power, door]` |
+| **Show remaining time, not finish time** | flip the header pill | `header_time: remaining` |
 | **Microwave with no delay** | hide the −/+ buttons | `show_delay: false` |
 | **Smart plug-only appliance** | just status + power | `controls_per_row: 2`<br>`controls: [status, power]`<br>`show_delay: false` |
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 — progress cell + finish-time header
+
+- **Header pill** now defaults to showing the wall-clock time the cycle
+  will finish ("Finishes at 14:35") instead of the duration remaining
+  ("33:20"). Per-appliance `header_time` flag toggles between the two:
+  `finish_at` (default) and `remaining`.
+- **New `progress` control** (built-in catalog): reads a 0–100% sensor
+  via the new `progress_entity` slot and renders as `82%` in the cell.
+- **Default cell list** for washer / dryer / dishwasher now uses
+  `progress` in the 4th cell instead of `temp`. The `temp` control is
+  still in the catalog — put it back by setting `controls:` in YAML.
+  Microwave default unchanged (`status, power, light, fan`).
+- Auto-discovery: progress is found by `unit_of_measurement: "%"` or a
+  name pattern containing `progress` / `percent` / `completion`.
+- Editor: new `progress_entity` picker + `header_time` dropdown.
+
 ## 0.3.0 — per-cell tap actions
 
 - Every control cell can now run a standard Home Assistant `tap_action`
