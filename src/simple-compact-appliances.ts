@@ -26,6 +26,7 @@ import {
   ResolvedAppliance,
   ServiceAction,
   SimpleCompactAppliancesConfig,
+  TapAction,
 } from "./types";
 
 // Side-effect import: registers the editor element. Same trick the thermostat
@@ -307,6 +308,12 @@ export class SimpleCompactAppliancesCard extends LitElement {
   // Reads one control cell's display state. Returns label/icon/color/value
   // plus interaction wiring. Dispatch by control name; unknown names render
   // as a placeholder so an unrecognized config entry doesn't break the card.
+  //
+  // Click handling priority:
+  //   1. config: control_actions[name].tap_action — overrides everything
+  //   2. built-in default (power/light/fan/eco/child_lock toggle their entity)
+  //   3. non-interactive (cell renders but ignores clicks)
+  // A configured tap_action with action: "none" explicitly disables the cell.
   private _readControlCell(app: ResolvedAppliance, name: string): {
     label: string;
     icon: string;
@@ -318,116 +325,273 @@ export class SimpleCompactAppliancesCard extends LitElement {
     const meta = (CONTROL_META as Record<string, { label: string; icon: string }>)[name];
     const label = meta?.label ?? name;
 
+    const base = this._readControlDisplay(app, name, label);
+    const wiring = this._resolveCellInteraction(app, name, base.defaultToggle);
+    return { ...base.display, ...wiring };
+  }
+
+  // Pulls just the visual state of a cell (label/icon/color/value) + records
+  // whether a default toggle exists, leaving click wiring to the caller.
+  private _readControlDisplay(app: ResolvedAppliance, name: string, label: string): {
+    display: { label: string; icon: string; color: string; value: string };
+    defaultToggle?: () => void;
+  } {
     switch (name) {
       case "status": {
         const running   = this._getRunning(app);
         const remaining = this._getRemainingSeconds(app);
         return {
-          label,
-          icon: "mdi:clock-outline",
-          color: running ? STATE_COLOR_VARS.running : STATE_COLOR_VARS.off,
-          value: running
-            ? (remaining != null ? formatRemaining(remaining) : "Running")
-            : "Idle",
-          interactive: false,
+          display: {
+            label,
+            icon: "mdi:clock-outline",
+            color: running ? STATE_COLOR_VARS.running : STATE_COLOR_VARS.off,
+            value: running
+              ? (remaining != null ? formatRemaining(remaining) : "Running")
+              : "Idle",
+          },
         };
       }
       case "power": {
         const power = this._getPower(app);
         return {
-          label,
-          icon: "mdi:flash",
-          color: power ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-          value: power ? "On" : "Off",
-          interactive: !!app.power_entity,
-          onClick: () => this._togglePower(app),
+          display: {
+            label,
+            icon: "mdi:flash",
+            color: power ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+            value: power ? "On" : "Off",
+          },
+          defaultToggle: app.power_entity ? () => this._togglePower(app) : undefined,
         };
       }
       case "door": {
         const door = this._getDoor(app);
         return {
-          label,
-          icon: door === "open" ? "mdi:door-open" : "mdi:door-closed",
-          color: door == null
-            ? STATE_COLOR_VARS.off
-            : door === "closed" ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.warn,
-          value: door == null ? "—" : door === "closed" ? "Closed" : "Open",
-          interactive: false,
+          display: {
+            label,
+            icon: door === "open" ? "mdi:door-open" : "mdi:door-closed",
+            color: door == null
+              ? STATE_COLOR_VARS.off
+              : door === "closed" ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.warn,
+            value: door == null ? "—" : door === "closed" ? "Closed" : "Open",
+          },
         };
       }
       case "temp": {
         const temp = this._getTemp(app);
         return {
-          label,
-          icon: "mdi:thermometer",
-          color: temp ? STATE_COLOR_VARS.temp : STATE_COLOR_VARS.off,
-          value: temp ? `${temp.value}${temp.unit}` : "—",
-          interactive: false,
+          display: {
+            label,
+            icon: "mdi:thermometer",
+            color: temp ? STATE_COLOR_VARS.temp : STATE_COLOR_VARS.off,
+            value: temp ? `${temp.value}${temp.unit}` : "—",
+          },
         };
       }
       case "light": {
-        const on = this._isOn(app.light_entity, `light:${app.type}`);
+        const optKey = `light:${app.type}`;
+        const value  = this._readToggleableDisplay(app.light_entity, optKey);
         return {
-          label,
-          icon: on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline",
-          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-          value: app.light_entity ? (on ? "On" : "Off") : "—",
-          interactive: !!app.light_entity,
-          onClick: () => this._toggleEntity(app.light_entity!, `light:${app.type}`),
+          display: {
+            label,
+            icon: value.on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline",
+            color: value.on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+            value: value.text,
+          },
+          defaultToggle: app.light_entity
+            ? () => this._toggleEntity(app.light_entity!, optKey)
+            : undefined,
         };
       }
       case "fan": {
-        const on = this._isOn(app.fan_entity, `fan:${app.type}`);
+        const optKey = `fan:${app.type}`;
+        const value  = this._readToggleableDisplay(app.fan_entity, optKey);
         return {
-          label,
-          icon: "mdi:fan",
-          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-          value: app.fan_entity ? (on ? "On" : "Off") : "—",
-          interactive: !!app.fan_entity,
-          onClick: () => this._toggleEntity(app.fan_entity!, `fan:${app.type}`),
+          display: {
+            label,
+            icon: "mdi:fan",
+            color: value.on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+            value: value.text,
+          },
+          defaultToggle: app.fan_entity
+            ? () => this._toggleEntity(app.fan_entity!, optKey)
+            : undefined,
         };
       }
       case "water": {
         const formatted = this._getNumericWithUnit(app.water_entity);
         return {
-          label,
-          icon: "mdi:water",
-          color: formatted ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-          value: formatted ?? "—",
-          interactive: false,
+          display: {
+            label,
+            icon: "mdi:water",
+            color: formatted ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+            value: formatted ?? "—",
+          },
         };
       }
       case "eco": {
-        const on = this._isOn(app.eco_entity, `eco:${app.type}`);
+        const optKey = `eco:${app.type}`;
+        const value  = this._readToggleableDisplay(app.eco_entity, optKey);
         return {
-          label,
-          icon: "mdi:leaf",
-          color: on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
-          value: app.eco_entity ? (on ? "On" : "Off") : "—",
-          interactive: !!app.eco_entity,
-          onClick: () => this._toggleEntity(app.eco_entity!, `eco:${app.type}`),
+          display: {
+            label,
+            icon: "mdi:leaf",
+            color: value.on ? STATE_COLOR_VARS.on : STATE_COLOR_VARS.off,
+            value: value.text,
+          },
+          defaultToggle: app.eco_entity
+            ? () => this._toggleEntity(app.eco_entity!, optKey)
+            : undefined,
         };
       }
       case "child_lock": {
-        const on = this._isOn(app.child_lock_entity, `child_lock:${app.type}`);
+        const optKey = `child_lock:${app.type}`;
+        const value  = this._readToggleableDisplay(app.child_lock_entity, optKey);
         return {
-          label,
-          icon: on ? "mdi:lock" : "mdi:lock-open-variant-outline",
-          color: on ? STATE_COLOR_VARS.warn : STATE_COLOR_VARS.off,
-          value: app.child_lock_entity ? (on ? "On" : "Off") : "—",
-          interactive: !!app.child_lock_entity,
-          onClick: () => this._toggleEntity(app.child_lock_entity!, `child_lock:${app.type}`),
+          display: {
+            label,
+            icon: value.on ? "mdi:lock" : "mdi:lock-open-variant-outline",
+            color: value.on ? STATE_COLOR_VARS.warn : STATE_COLOR_VARS.off,
+            value: value.text,
+          },
+          defaultToggle: app.child_lock_entity
+            ? () => this._toggleEntity(app.child_lock_entity!, optKey)
+            : undefined,
         };
       }
       default:
         return {
-          label,
-          icon: "mdi:help-circle-outline",
-          color: STATE_COLOR_VARS.off,
-          value: "—",
-          interactive: false,
+          display: {
+            label,
+            icon: "mdi:help-circle-outline",
+            color: STATE_COLOR_VARS.off,
+            value: "—",
+          },
         };
     }
+  }
+
+  // Resolves the click wiring for a cell. Configured tap_action wins; falls
+  // back to the cell's default toggle; otherwise non-interactive.
+  private _resolveCellInteraction(
+    app: ResolvedAppliance,
+    name: string,
+    defaultToggle: (() => void) | undefined,
+  ): { interactive: boolean; onClick?: () => void } {
+    const tap = app.control_actions?.[name]?.tap_action;
+    if (tap) {
+      if (tap.action === "none") return { interactive: false };
+      return {
+        interactive: true,
+        onClick: () => this._handleTapAction(tap, app, name),
+      };
+    }
+    if (defaultToggle) return { interactive: true, onClick: defaultToggle };
+    return { interactive: false };
+  }
+
+  // Renders a generic on/off/<state> readout from a single entity. Used by
+  // light/fan/eco/child_lock so they handle integrations that publish
+  // non-binary states ("Low" / "High" / "Cooking") instead of just on/off.
+  private _readToggleableDisplay(
+    entityId: string | undefined,
+    optKey: string,
+  ): { on: boolean; text: string } {
+    const opt = this._optimistic[optKey];
+    if (opt) {
+      const bv = !!opt.value;
+      return { on: bv, text: bv ? "On" : "Off" };
+    }
+    if (!entityId) return { on: false, text: "—" };
+    const st = this.hass.states[entityId];
+    if (!st || st.state === "unknown" || st.state === "unavailable") {
+      return { on: false, text: "—" };
+    }
+    const raw = String(st.state);
+    const norm = raw.toLowerCase();
+    if (norm === "on")  return { on: true,  text: "On"  };
+    if (norm === "off") return { on: false, text: "Off" };
+    // Treat any non-zero numeric or non-empty non-off string as "on" for color.
+    const n = parseFloat(raw);
+    const onNumeric = !isNaN(n) && n > 0;
+    const onString  = isNaN(n) && norm !== "" && norm !== "none";
+    return {
+      on: onNumeric || onString,
+      text: this._capitalize(raw),
+    };
+  }
+
+  private _capitalize(s: string): string {
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
+  // Standard HA tap_action dispatcher. Mirrors the contract `mushroom` and
+  // `button-card` implement so configs imported from those cards Just Work.
+  private _handleTapAction(action: TapAction, _app: ResolvedAppliance, _controlName: string): void {
+    if (action.confirmation) {
+      const text = typeof action.confirmation === "object"
+        ? (action.confirmation.text ?? "Are you sure?")
+        : "Are you sure?";
+      if (!window.confirm(text)) return;
+    }
+
+    switch (action.action) {
+      case "none":
+        return;
+
+      case "toggle": {
+        const eid = this._firstEntityId(action.target?.entity_id);
+        if (!eid) return;
+        this.hass.callService("homeassistant", "toggle", { entity_id: eid });
+        return;
+      }
+
+      case "call-service":
+      case "perform-action": {
+        if (!action.service) return;
+        const dot = action.service.indexOf(".");
+        if (dot < 0) return;
+        const domain  = action.service.slice(0, dot);
+        const service = action.service.slice(dot + 1);
+        const data    = { ...(action.data ?? action.service_data ?? {}) };
+        const target  = action.target ?? undefined;
+        this.hass.callService(domain, service, data, target as any);
+        return;
+      }
+
+      case "more-info": {
+        const eid = this._firstEntityId(action.target?.entity_id);
+        if (!eid) return;
+        this.dispatchEvent(new CustomEvent("hass-more-info", {
+          detail:   { entityId: eid },
+          bubbles:  true,
+          composed: true,
+        }));
+        return;
+      }
+
+      case "navigate": {
+        if (!action.navigation_path) return;
+        history.pushState(null, "", action.navigation_path);
+        window.dispatchEvent(new Event("location-changed"));
+        return;
+      }
+
+      case "url": {
+        if (action.url_path) window.open(action.url_path, "_blank");
+        return;
+      }
+
+      case "assist":
+        // Out of scope for now — silently no-op rather than throw so the
+        // card stays usable if a future config sneaks this through.
+        return;
+    }
+  }
+
+  private _firstEntityId(eid: string | string[] | undefined): string | undefined {
+    if (!eid) return undefined;
+    return Array.isArray(eid) ? eid[0] : eid;
   }
 
   private _renderControlRow(
@@ -604,6 +768,7 @@ export class SimpleCompactAppliancesCard extends LitElement {
       controls:         a.controls         ?? DEFAULT_CONTROLS[a.type],
       controls_rows:    a.controls_rows    ?? DEFAULT_CONTROLS_ROWS,
       controls_per_row: a.controls_per_row ?? DEFAULT_CONTROLS_PER_ROW,
+      control_actions:  a.control_actions,
       show_delay: a.show_delay !== false,
       delay_min:  a.delay_min  ?? DELAY_MIN_DEFAULT,
       delay_max:  a.delay_max  ?? DELAY_MAX_DEFAULT,

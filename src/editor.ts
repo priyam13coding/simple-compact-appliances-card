@@ -10,7 +10,13 @@ import {
   DEFAULT_CONTROLS,
   DEFAULT_CONTROLS_ROWS,
   DEFAULT_CONTROLS_PER_ROW,
+  BuiltInControl,
 } from "./const";
+import { TapAction, ControlActionConfig } from "./types";
+
+// Form-field name for the per-control tap_action selector. Folded into
+// control_actions[<name>].tap_action on save, unfolded on render.
+const TAP_FIELD = (c: BuiltInControl): string => `tap_action_${c}`;
 import { ApplianceConfig, SimpleCompactAppliancesConfig } from "./types";
 
 export const EDITOR_NAME = `${CARD_NAME}-editor`;
@@ -70,6 +76,9 @@ const APPLIANCE_LABELS_FORM: Record<string, string> = {
   delay_min:         "Delay min (minutes)",
   delay_max:         "Delay max (minutes)",
   delay_step:        "Delay step (minutes)",
+  ...Object.fromEntries(
+    BUILT_IN_CONTROLS.map(c => [TAP_FIELD(c), `${CONTROL_META[c].label} — tap action`]),
+  ),
 };
 
 const APPLIANCE_SCHEMA = [
@@ -139,6 +148,22 @@ const APPLIANCE_SCHEMA = [
       },
       { name: "show_delay", selector: { boolean: {} } },
     ],
+  },
+  {
+    type: "expandable",
+    name: "",
+    title: "Tap actions per control",
+    icon: "mdi:gesture-tap",
+    schema: BUILT_IN_CONTROLS.map(c => ({
+      name: TAP_FIELD(c),
+      selector: {
+        ui_action: {
+          // List the action types we actually dispatch in the main card.
+          // Omitting one here removes it from the dropdown.
+          actions: ["none", "toggle", "call-service", "more-info", "navigate", "url"],
+        },
+      },
+    })),
   },
   {
     type: "expandable",
@@ -228,7 +253,13 @@ export class SimpleCompactAppliancesEditor extends LitElement {
     // Prefill controls with the per-type default so the multi-select shows
     // what the card is actually rendering (rather than appearing empty).
     const typeDefault = DEFAULT_CONTROLS[a.type] ?? DEFAULT_CONTROLS.washer;
-    const data = { ...APPLIANCE_DEFAULTS, controls: typeDefault, ...a };
+    // Unfold control_actions[c].tap_action into flat form fields so the
+    // ha-form ui_action selectors render with the saved values.
+    const tapFields: Record<string, TapAction | undefined> = {};
+    for (const c of BUILT_IN_CONTROLS) {
+      tapFields[TAP_FIELD(c)] = a.control_actions?.[c]?.tap_action;
+    }
+    const data = { ...APPLIANCE_DEFAULTS, controls: typeDefault, ...a, ...tapFields };
     return html`
       <div class="appliance-card">
         <div class="appliance-head" @click=${() => this._expanded = expanded ? -1 : i}>
@@ -312,8 +343,27 @@ export class SimpleCompactAppliancesEditor extends LitElement {
   };
 
   private _applianceChanged(i: number, e: CustomEvent): void {
-    const v = e.detail.value;
-    const next: ApplianceConfig = { ...this._config.appliances[i], ...v };
+    const v = { ...e.detail.value };
+
+    // Fold tap_action_<control> form fields back into control_actions.
+    // Strip the flat keys before merging so they don't pollute the saved YAML.
+    const prev = this._config.appliances[i];
+    const actions: Record<string, ControlActionConfig> = { ...(prev.control_actions ?? {}) };
+    for (const c of BUILT_IN_CONTROLS) {
+      const key = TAP_FIELD(c);
+      const ta  = (v as any)[key] as TapAction | undefined;
+      delete (v as any)[key];
+      if (ta && ta.action) {
+        actions[c] = { ...(actions[c] ?? {}), tap_action: ta };
+      } else if (actions[c]) {
+        delete (actions[c] as any).tap_action;
+        if (Object.keys(actions[c]).length === 0) delete actions[c];
+      }
+    }
+
+    const next: ApplianceConfig = { ...prev, ...v };
+    if (Object.keys(actions).length > 0) next.control_actions = actions;
+    else delete next.control_actions;
 
     // Strip values that match runtime defaults so the YAML stays minimal.
     for (const [k, dv] of Object.entries(APPLIANCE_DEFAULTS)) {

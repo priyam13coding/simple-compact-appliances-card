@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — per-cell tap actions
+
+- Every control cell can now run a standard Home Assistant `tap_action`
+  on click (`none`, `toggle`, `call-service`, `more-info`, `navigate`,
+  `url`) — same shape as Mushroom / button-card.
+- When `tap_action` is set, it overrides the cell's default toggle
+  behavior. Useful for the common pattern where a "switch" entity is
+  actually a sensor and a script does the work (e.g. `light_entity:
+  sensor.microwave_light_display` + `tap_action: { service:
+  script.cycle_microwave_light }`).
+- `action: none` explicitly disables a cell (e.g. read-only "Power"
+  display without click handling).
+- Light / fan / eco / child_lock cells now show the entity's raw state
+  ("Low" / "High" / "Cooking") when it isn't simply "on"/"off".
+- Editor: new "Tap actions per control" expandable section per
+  appliance, with one HA-native `ui_action` selector per control.
+
 ## 0.2.0 — configurable status grid
 
 - Each appliance can now define its own grid: `controls_rows` × `controls_per_row`,

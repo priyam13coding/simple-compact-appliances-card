@@ -8,6 +8,7 @@ Designed alongside [simple-compact-thermostat](https://github.com/priyam13coding
 
 - **One card, up to four appliances.** Tab between them in the Control view, or see them all at a glance in the Summary view.
 - **Configurable status grid.** Pick any of 9 built-in controls (`status`, `power`, `door`, `temp`, `light`, `fan`, `water`, `eco`, `child_lock`) and lay them out as 1×4, 2×3, 1×6, etc. — independently per appliance. Microwave defaults to `[status, power, light, fan]`; washer/dryer/dishwasher default to `[status, power, door, temp]`.
+- **Tap actions per cell.** Every cell supports a standard HA `tap_action` (`none`, `toggle`, `call-service`, `more-info`, `navigate`, `url`) — same shape as Mushroom / button-card. When set, it overrides the cell's default toggle behavior, so the light cell can run a script instead of toggling a switch.
 - **Per-control entity mapping.** Map any combination of `switch.*`, `light.*`, `fan.*`, `binary_sensor.*`, `sensor.*`, `select.*`, `number.*`, `button.*` / `script.*`. Anything you don't map is hidden or shown as "—".
 - **Auto-discovery from a device.** Point at a `device_id` and the card auto-fills every entity slot it can. Per-control overrides win when set.
 - **Optional delay timer.** Set `show_delay: false` per appliance to hide the delay −/+ buttons. Program selector and Play/Pause stay rendered.
@@ -91,6 +92,25 @@ appliances:
     show_delay: true                                 # hide the −/+ delay
                                                      # buttons when false
 
+    # Per-cell tap behavior. Standard HA tap_action shape (action ∈
+    # none|toggle|call-service|more-info|navigate|url). When set, this
+    # overrides the cell's default click handler (e.g. light/fan default
+    # to toggling their entity — replace it with a script call).
+    control_actions:
+      light:
+        tap_action:
+          action: call-service
+          service: script.cycle_microwave_light
+      fan:
+        tap_action:
+          action: call-service
+          service: script.cycle_microwave_fan
+      power:
+        tap_action:
+          action: more-info                          # open more-info dialog
+      door:
+        tap_action: { action: none }                 # explicitly inert
+
     # Service calls fired by the Play/Pause button.
     start_action:
       service: button.press
@@ -114,6 +134,68 @@ appliances:
 | **Washer 1×3 without temp** | drop temp cell | `controls_per_row: 3`<br>`controls: [status, power, door]` |
 | **Microwave with no delay** | hide the −/+ buttons | `show_delay: false` |
 | **Smart plug-only appliance** | just status + power | `controls_per_row: 2`<br>`controls: [status, power]`<br>`show_delay: false` |
+
+## Recipe: microwave with cycling scripts
+
+A common pattern with smart microwaves: the integration publishes a *display* sensor (`Off`/`Low`/`High`) and a *cycle* script that advances through the states. The cell should **read** the sensor and **run** the script on tap.
+
+```yaml
+type: custom:simple-compact-appliances
+appliances:
+  - type: microwave
+    name: Kitchen Microwave
+    device_id: <microwave device id>           # auto-discovers status/power/program/etc.
+
+    # Read state from the display sensors (so the cell shows "Low" / "High").
+    light_entity: sensor.microwave_light_display
+    fan_entity:   sensor.microwave_fan_display
+
+    controls: [status, power, light, fan]      # the microwave default
+
+    # Tap the light or fan cell → run the cycle script.
+    # Without this, the card would try to toggle the sensor (no-op).
+    control_actions:
+      light:
+        tap_action:
+          action: call-service
+          service: script.cycle_microwave_light
+      fan:
+        tap_action:
+          action: call-service
+          service: script.cycle_microwave_fan
+
+    # No delay timer on a microwave.
+    show_delay: false
+
+    start_action: { service: button.press, target: { entity_id: button.microwave_start } }
+    pause_action: { service: button.press, target: { entity_id: button.microwave_stop  } }
+```
+
+## tap_action reference
+
+The `tap_action` shape matches Home Assistant's standard `ui_action` selector. All fields except `action` are optional and depend on which action type you pick:
+
+```yaml
+tap_action:
+  action: none | toggle | call-service | more-info | navigate | url
+
+  # action: call-service
+  service: script.my_script                # or any "domain.service"
+  data:    { brightness: 200 }             # service params
+  target:  { entity_id: light.kitchen }    # target entities/devices/areas
+
+  # action: more-info
+  target:  { entity_id: sensor.foo }       # entity whose dialog to open
+
+  # action: navigate
+  navigation_path: /lovelace/dashboard-2
+
+  # action: url
+  url_path: https://example.com
+
+  # any action
+  confirmation: true                       # or { text: "Are you sure?" }
+```
 
 ## Theming
 

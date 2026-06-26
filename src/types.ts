@@ -13,6 +13,31 @@ export interface ServiceAction {
   };
 }
 
+// Standard Home Assistant tap_action shape, used by the per-control click
+// handler (control_actions[<name>].tap_action). Mirrors the `ui_action`
+// selector other HACS cards expose — so a user familiar with mushroom /
+// button-card finds the same fields here.
+export interface TapAction {
+  action: "none" | "toggle" | "call-service" | "perform-action"
+        | "more-info" | "navigate" | "url" | "assist";
+  service?:         string;                        // for call-service / perform-action
+  data?:            Record<string, unknown>;       // newer alias
+  service_data?:    Record<string, unknown>;       // legacy alias
+  target?: {
+    entity_id?: string | string[];
+    device_id?: string | string[];
+    area_id?:   string | string[];
+  };
+  navigation_path?: string;                        // for navigate
+  url_path?:        string;                        // for url
+  confirmation?: boolean | { text?: string };      // simple confirm dialog
+}
+
+export interface ControlActionConfig {
+  tap_action?: TapAction;
+  // hold_action / double_tap_action could be added later — same shape.
+}
+
 // Per-appliance entity mapping. `type` selects which icon/label to render and
 // what discovery slug to look for; `device_id` enables auto-discovery of the
 // per-control entities. Every *_entity field is an override that takes priority
@@ -50,6 +75,12 @@ export interface ApplianceConfig {
   controls?:         string[];
   controls_rows?:    number;
   controls_per_row?: number;
+
+  // Per-cell tap behavior. Map from built-in control name → action config.
+  // When `tap_action` is set, it overrides the cell's default click handler
+  // (e.g. light/fan default toggle the switch — set tap_action to call a
+  // script instead). Action "none" makes the cell explicitly non-interactive.
+  control_actions?: Record<string, ControlActionConfig>;
 
   // Bottom control row. show_delay hides only the delay −/+/value triplet;
   // program dropdown and play/pause stay rendered. Default true.
@@ -93,6 +124,7 @@ export interface ResolvedAppliance {
   controls:         string[];
   controls_rows:    number;
   controls_per_row: number;
+  control_actions?: Record<string, ControlActionConfig>;
   show_delay: boolean;
   delay_min:  number;
   delay_max:  number;
